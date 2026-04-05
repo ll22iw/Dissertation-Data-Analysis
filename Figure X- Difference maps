@@ -1,0 +1,78 @@
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+
+view_lon, view_lat = [296.02, 352.22], [-3.98, 24.33]
+
+dates = [
+    {"label": "13 August 2024", "f_date": "20240812", "t_t": "2024-08-13T12:00:00"},
+    {"label": "03 September 2024", "f_date": "20240902", "t_t": "2024-09-03T12:00:00"}
+]
+
+def get_weighted_mean(da):
+    weights = np.cos(np.deg2rad(da.latitude))
+    weights.name = "weights"
+    da_view = da.sel(longitude=slice(*view_lon), latitude=slice(*view_lat))
+    return da_view.weighted(weights).mean(dim=['latitude', 'longitude'], skipna=True).values
+
+for d in dates:
+    t, s = d["t_t"], d["f_date"]
+    
+    ds_sw_c = xr.open_dataset(f'var_{s}_orcestra_km5p0_RAL3P3_1208_ctrl.nc')
+    ds_sw_s = xr.open_dataset(f'var_{s}_orcestra_km5p0_RAL3P3_1208.nc')
+    ds_lw_c = xr.open_dataset(f'var_{s}_orcestra_km5p0_RAL3P3_2205_ctrl.nc')
+    ds_lw_s = xr.open_dataset(f'var_{s}_orcestra_km5p0_RAL3P3_2205.nc')
+    ds_sat  = xr.open_dataset('CERES_SYN1deg-1H_Terra-Aqua-NOAA20_Ed4.2_Subset_20240801-20241031.nc')
+
+    v_sw = list(ds_sw_c.data_vars)[0]
+    v_lw = list(ds_lw_c.data_vars)[0]
+
+    sat_sw = ds_sat["toa_sw_all_1h"].sel(time=t, method='nearest').rename({'lon':'longitude', 'lat':'latitude'})
+    sat_lw = ds_sat["toa_lw_all_1h"].sel(time=t, method='nearest').rename({'lon':'longitude', 'lat':'latitude'})
+    sat_sw_i = sat_sw.interp_like(ds_sw_c)
+    sat_lw_i = sat_lw.interp_like(ds_lw_c)
+
+    sw_bias_ctrl  = sat_sw_i - ds_sw_c[v_sw].sel(time=t, method='nearest')
+    lw_bias_ctrl  = sat_lw_i - ds_lw_c[v_lw].sel(time=t, method='nearest')
+    sw_bias_sol   = sat_sw_i - ds_sw_s[v_sw].sel(time=t, method='nearest')
+    lw_bias_sol   = sat_lw_i - ds_lw_s[v_lw].sel(time=t, method='nearest')
+
+    sw_impact = ds_sw_s[v_sw].sel(time=t, method='nearest') - ds_sw_c[v_sw].sel(time=t, method='nearest')
+    lw_impact = ds_lw_s[v_lw].sel(time=t, method='nearest') - ds_lw_c[v_lw].sel(time=t, method='nearest')
+
+    fig, axs = plt.subplots(3, 2, figsize=(18, 22), subplot_kw={'projection': ccrs.PlateCarree()})
+    plt.suptitle(f"Radiative Analysis: {d['label']} at 12:00 UTC", fontsize=28, y=0.98)
+
+    plot_configs = [
+        (sw_bias_ctrl, "Shortwave Bias: Satellite - CTRL", 400, "Satellite-CTRL"),
+        (lw_bias_ctrl, "Longwave Bias: Satellite - CTRL", 100, "Satellite-CTRL"),
+        (sw_bias_sol, "Shortwave Bias: Satellite - SOLINSOL", 400, "Satellite-SOLINSOL"),
+        (lw_bias_sol, "Longwave Bias: Satellite - SOLINSOL", 100, "Satellite-SOLINSOL"),
+        (sw_impact, "Shortwave Impact: SOLINSOL - CTRL", 400, "SOLINSOL-CTRL"),
+        (lw_impact, "Longwave Impact: SOLINSOL - CTRL", 100, "SOLINSOL-CTRL")
+    ]
+
+    for i, (data, title, lim, lbl) in enumerate(plot_configs):
+        ax = axs.flat[i]
+        im = data.plot(ax=ax, cmap='RdBu_r', vmin=-lim, vmax=lim, add_colorbar=False)
+        
+        m_val = get_weighted_mean(data)
+        ax.text(0.02, 0.05, f"Domain Average: {m_val:.2f} W/m²", transform=ax.transAxes, 
+                fontsize=14, bbox=dict(facecolor='white', alpha=0.8))
+
+        ax.coastlines(linewidth=1.5)
+        ax.set_extent([view_lon[0], view_lon[1], view_lat[0], view_lat[1]], crs=ccrs.PlateCarree())
+        ax.set_title(title, fontsize=18)
+        
+        gl = ax.gridlines(draw_labels=True, alpha=0.2, linestyle='--')
+        gl.top_labels = gl.right_labels = False
+        gl.xlabel_style = {'size': 14}
+        gl.ylabel_style = {'size': 14}
+        
+        cb = plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.12, shrink=0.8)
+        cb.set_label(f"{lbl} (W/m²)", fontsize=14)
+        cb.ax.tick_params(labelsize=12)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.show()
