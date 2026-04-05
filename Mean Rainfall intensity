@@ -1,0 +1,53 @@
+# mean rainfall intesnty comparison bar chart
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+import netCDF4 as nc
+
+def get_swath_intensity(init_date, target_date, gpm_file):
+    target_fmt = f"{target_date[:4]}-{target_date[4:6]}-{target_date[6:]}"
+    base_path = '/storage/earth_data/home/ll22iw/Dissertation_data/'
+    
+    with nc.Dataset(f"{base_path}{gpm_file}") as ds_gpm:
+        grid_grp = ds_gpm.groups['GRID']
+        gpm_rain = grid_grp.variables['precipRateMean'][:].astype(float)
+        
+    gpm_only_rain = gpm_rain[gpm_rain > 0.1]
+    gpm_val = np.mean(gpm_only_rain) if len(gpm_only_rain) > 0 else 0
+
+    def get_model_val(path, day):
+        try:
+            with xr.open_dataset(path, decode_timedelta=False) as ds:
+                m_rain = ds['stratiform_rainfall_flux'].sel(time=f"{day}T12", method='nearest').values * 3600
+                m_only_rain = m_rain[m_rain > 0.1]
+                return np.mean(m_only_rain) if len(m_only_rain) > 0 else 0
+        except: return 0
+
+    f_c = f"{base_path}var_{init_date}_orcestra_km5p0_RAL3P3_4203_ctrl.nc"
+    f_s = f"{base_path}var_{init_date}_orcestra_km5p0_RAL3P3_4203.nc"
+
+    return get_model_val(f_c, target_fmt), get_model_val(f_s, target_fmt), gpm_val
+
+aug_c, aug_s, aug_g = get_swath_intensity("20240812", "20240813", "3A-DAY.GPM.DPR.V3-20210628.20240813-S000000-E235959.226.V07C.HDF5")
+sep_c, sep_s, sep_g = get_swath_intensity("20240902", "20240903", "3A-DAY.GPM.DPR.V3-20240808.20240903-S000000-E235959.247.V07D.HDF5")
+
+dates = ['13 August 2024', '03 September 2024']
+x = np.arange(len(dates))
+width = 0.25
+
+fig, ax = plt.subplots(figsize=(12, 8))
+
+ax.bar(x - width, [aug_c, sep_c], width, label='CTRL', color='teal', alpha=0.9)
+ax.bar(x, [aug_s, sep_s], width, label='SOLINSOL', color='darkred', alpha=0.9)
+ax.bar(x + width, [aug_g, sep_g], width, label='GPM Satellite', color='orange', alpha=0.9)
+
+ax.set_ylabel('Mean Rain Intensity (mm/hr)', fontsize=16)
+ax.set_title('Comparison of Mean Rainfall Intensity', fontsize=18)
+ax.set_xticks(x)
+ax.set_xticklabels(dates, fontsize=16)
+ax.legend(loc='upper right', fontsize=14)
+ax.grid(axis='y', linestyle='--', alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
