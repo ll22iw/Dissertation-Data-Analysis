@@ -1,0 +1,52 @@
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+
+view_lon = [296.02, 352.22]
+view_lat = [-3.98, 24.33]
+
+dates = [
+    {"label": "13 Aug", "file_date": "20240812", "target_t": "2024-08-13T12:00:00"},
+    {"label": "03 September", "file_date": "20240902", "target_t": "2024-09-03T12:00:00"}
+]
+
+for d in dates:
+    t, s = d["target_t"], d["file_date"]
+    
+    ds_lw_c = xr.open_dataset(f'var_{s}_orcestra_km5p0_RAL3P3_2205_ctrl.nc')
+    ds_lw_s = xr.open_dataset(f'var_{s}_orcestra_km5p0_RAL3P3_2205.nc')
+    ds_sat  = xr.open_dataset('CERES_SYN1deg-1H_Terra-Aqua-NOAA20_Ed4.2_Subset_20240801-20241031.nc')
+    
+    def calculate_cloud_fraction(ds, var, t_val, lon_name, lat_name):
+        subset = ds[var].sel(time=t_val, method='nearest').sel(
+            {lon_name: slice(view_lon[0], view_lon[1]), 
+             lat_name: slice(view_lat[0], view_lat[1])}
+        )
+        cloud_mask = xr.where(subset < 220, 1, 0)
+        return cloud_mask.mean(dim=lon_name) * 100
+
+    v_c = list(ds_lw_c.data_vars)[0]
+    v_s = list(ds_lw_s.data_vars)[0]
+    
+    prof_c = calculate_cloud_fraction(ds_lw_c, v_c, t, 'longitude', 'latitude')
+    prof_s = calculate_cloud_fraction(ds_lw_s, v_s, t, 'longitude', 'latitude')
+    prof_sat = calculate_cloud_fraction(ds_sat, "toa_lw_all_1h", t, 'lon', 'lat')
+
+    plt.figure(figsize=(14, 8))
+    
+    plt.plot(prof_c.latitude, prof_c, label='CTRL', color='teal', linewidth=3.5)
+    plt.plot(prof_s.latitude, prof_s, label='SOLINSOL', color='darkred', linewidth=3.5)
+    plt.plot(prof_sat.lat, prof_sat, label='CERES Satellite', color='black', linewidth=2.5, alpha=0.8)
+    
+    plt.title(f"Zonal Mean High-Cloud Fraction (%): {d['label']}", fontsize=22, pad=20)
+    plt.xlabel("Latitude (°N)", fontsize=22)
+    plt.ylabel("Convective Cloud Cover (%) \n (OLR < 220 W m⁻²)", fontsize=22)
+
+    
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.legend(frameon=True, shadow=True, fontsize=16)
+    plt.grid(alpha=0.3, linestyle='--')
+    plt.ylim(0, 100)
+    plt.tight_layout()
+    plt.show()
