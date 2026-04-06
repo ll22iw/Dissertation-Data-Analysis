@@ -1,0 +1,89 @@
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+import h5py
+
+view_lon, view_lat = [296.02, 352.22], [-3.98, 24.33]
+RAIN_RANGE = (0.1, 50)
+RAIN_NBINS = 30
+
+dates = [
+    {
+        "label": "13 Aug",
+        "f_date": "20240812",
+        "t_t": "2024-08-13T12:00:00",
+        "gpm": "3A-DAY.GPM.DPR.V3-20210628.20240813-S000000-E235959.226.V07C.HDF5",
+    },
+    {
+        "label": "03 Sep",
+        "f_date": "20240902",
+        "t_t": "2024-09-03T12:00:00",
+        "gpm": "3A-DAY.GPM.DPR.V3-20240808.20240903-S000000-E235959.247.V07D.HDF5",
+    },
+]
+
+def get_stats(da, t):
+    lon_name = "longitude" if "longitude" in da.coords else "lon"
+    lat_name = "latitude" if "latitude" in da.coords else "lat"
+    subset = da.sel(time=t, method="nearest").sel(
+        {lon_name: slice(view_lon[0], view_lon[1]),
+         lat_name: slice(view_lat[0], view_lat[1])}
+    )
+    arr = subset.values.flatten()
+    return arr[np.isfinite(arr)]
+
+def clip_valid(arr, vmin=None, vmax=None, positive_only=False):
+    arr = np.asarray(arr)
+    arr = arr[np.isfinite(arr)]
+    if positive_only: arr = arr[arr > 0]
+    if vmin is not None: arr = arr[arr >= vmin]
+    if vmax is not None: arr = arr[arr <= vmax]
+    return arr
+
+for d in dates:
+    t, s = d["t_t"], d["f_date"]
+
+    ds_r_c = xr.open_dataset(f"var_{s}_orcestra_km5p0_RAL3P3_4203_ctrl.nc")
+    ds_r_s = xr.open_dataset(f"var_{s}_orcestra_km5p0_RAL3P3_4203.nc")
+
+    try:
+        with h5py.File(d["gpm"], "r") as hf:
+            gpm_raw = hf["GRID/precipRateMean"][0, 0, 0, :, :]
+            gpm_stats = clip_valid(gpm_raw, vmin=RAIN_RANGE[0], vmax=RAIN_RANGE[1], positive_only=True)
+    except:
+        gpm_stats = np.array([])
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    v_r = list(ds_r_c.data_vars)[0]
+    r_c = clip_valid(get_stats(ds_r_c[v_r], t) * 3600.0, vmin=RAIN_RANGE[0], vmax=RAIN_RANGE[1], positive_only=True)
+    r_s = clip_valid(get_stats(ds_r_s[v_r], t) * 3600.0, vmin=RAIN_RANGE[0], vmax=RAIN_RANGE[1], positive_only=True)
+
+    rain_bins = np.logspace(np.log10(RAIN_RANGE[0]), np.log10(RAIN_RANGE[1]), RAIN_NBINS + 1)
+
+    ax.hist(r_c, bins=rain_bins, alpha=0.4, label="Fixed (CTRL)", color="blue", density=True)
+    ax.hist(r_s, bins=rain_bins, alpha=0.4, label="Aerosol (SOLINSOL)", color="orange", density=True)
+    
+    if len(gpm_stats) > 0:
+        ax.hist(gpm_stats, bins=rain_bins, histtype="step", linewidth=3, label="GPM (Satellite)", color="black", density=True)
+
+    ax.axvline(np.median(r_c), color="blue", linestyle="--", linewidth=2)
+    ax.axvline(np.median(r_s), color="orange", linestyle="--", linewidth=2)
+    if len(gpm_stats) > 0:
+        ax.axvline(np.median(gpm_stats), color="black", linestyle="--", linewidth=2)
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_title(f"Rain Rate Distribution: {d['label']}", fontsize=22, fontweight="bold", pad=20)
+    ax.set_xlabel("Rain rate (mm hr$^{-1}$)", fontsize=18)
+    ax.set_ylabel("Normalised frequency", fontsize=18)
+    ax.set_xlim(RAIN_RANGE)
+    ax.tick_params(axis='both', which='major', labelsize=16)
+    ax.legend(fontsize=16, frameon=False)
+    ax.grid(alpha=0.3, which="both")
+
+    plt.tight_layout()
+    plt.show()
+
+    ds_r_c.close()
+    ds_r_s.close()
