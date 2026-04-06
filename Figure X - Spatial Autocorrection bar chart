@@ -1,0 +1,45 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+labels = ['13 August', '03 September']
+control_vals = [0.9392, 0.9259]
+sol_vals = [0.9281, 0.9004]
+
+# Exact SE from your results
+se_val = 0.000797
+control_errs = [se_val, se_val]
+sol_errs = [se_val, se_val]
+
+x = np.arange(len(labels))
+width = 0.35
+
+fig, ax = plt.subplots(figsize=(10, 8), dpi=300)
+
+rects1 = ax.bar(x - width/2, control_vals, width, label='Control', 
+                color='teal', yerr=control_errs, capsize=6, 
+                error_kw={'elinewidth':1.2, 'ecolor': 'black'})
+
+rects2 = ax.bar(x + width/2, sol_vals, width, label='Solinsol', 
+                color='darkred', yerr=sol_errs, capsize=6, 
+                error_kw={'elinewidth':1.2, 'ecolor': 'black'})
+
+# Scale to show the differences clearly
+ax.set_ylim(0.88, 0.95) 
+
+ax.set_ylabel("Moran's I Index", fontsize=18, labelpad=15)
+ax.set_title("Spatial Autocorrelation (Moran's I) Comparison", fontsize=22, pad=25)
+
+ax.set_xticks(x)
+ax.set_xticklabels(labels, fontsize=16)
+ax.tick_params(axis='y', labelsize=14)
+
+# Removed ax.bar_label lines to take the numbers off the top
+
+ax.legend(fontsize=16, frameon=False, loc='upper right')
+ax.grid(axis='y', alpha=0.2, linestyle='--')
+
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+
+plt.tight_layout()
+plt.show()
