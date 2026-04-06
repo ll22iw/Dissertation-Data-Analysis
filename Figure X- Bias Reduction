@@ -1,0 +1,46 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+datasets = [
+    [52.0, 66.4, 73.3], 
+    [38.5, 78.1, 63.8]  
+]
+
+categories = ['Shortwave', 'Longwave', 'Rainfall']
+time_labels = [
+    "13 August 2024 (Rad: 12:00 UTC | Rain: 00-24 UTC)",
+    "03 September 2024 (Rad: 12:00 UTC | Rain: 00-24 UTC)"
+]
+
+colors = ['teal', 'darkred']
+y_pos = np.arange(len(categories))
+
+fig, axs = plt.subplots(2, 1, figsize=(12, 10))
+
+for i, (ax, data, date_label, color) in enumerate(zip(axs, datasets, time_labels, colors)):
+    
+    ax.barh(y_pos, [100]*3, height=0.6, color='#f5f5f5', label='Fixed Microphysics Error (Baseline)')
+    
+    bars = ax.barh(y_pos, data, height=0.6, color=color, label='Bias Removed by Aerosol Microphysics')
+    
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(categories, fontsize=13)
+    ax.set_title(f"Relative Reduction In Bias: {date_label}", loc='left', fontsize=15, pad=15)
+    ax.set_xlabel('Percentage of Bias Removed (%)', fontsize=12)
+    ax.set_xlim(0, 100)
+    
+    for bar in bars:
+        width = bar.get_width()
+        ax.text(width + 1.5, bar.get_y() + bar.get_height()/2, 
+                f'{width:.1f}% Improvement', va='center', color=color, fontsize=12)
+
+    ax.invert_yaxis() 
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
+    ax.grid(axis='x', linestyle='--', alpha=0.2)
+
+axs[1].legend(loc='upper center', bbox_to_anchor=(0.5, -0.25), ncol=2, frameon=False, fontsize=12)
+
+plt.tight_layout()
+plt.subplots_adjust(bottom=0.15, hspace=0.4) 
+plt.show()
