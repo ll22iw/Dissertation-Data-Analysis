@@ -1,0 +1,50 @@
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+from libpysal.weights import lat2W, w_subset
+from esda.moran import Moran
+from splot.esda import moran_scatterplot
+
+# --- CONFIG ---
+VAR_NAME = 'toa_outgoing_shortwave_flux'
+TASKS = [
+    {'file': 'var_20240812_orcestra_km5p0_RAL3P3_1208_ctrl.nc', 'date': '2024-08-13', 'label': 'Control'},
+    {'file': 'var_20240812_orcestra_km5p0_RAL3P3_1208.nc',      'date': '2024-08-13', 'label': 'Solinsol'},
+    {'file': 'var_20240902_orcestra_km5p0_RAL3P3_1208_ctrl.nc', 'date': '2024-09-03', 'label': 'Control'},
+    {'file': 'var_20240902_orcestra_km5p0_RAL3P3_1208.nc',      'date': '2024-09-03', 'label': 'Solinsol'}
+]
+
+def analyze_moran(task):
+    with xr.open_dataset(task['file']) as ds:
+        target_ts = f"{task['date']}T12:00:00"
+        data = ds[VAR_NAME].sel(time=target_ts, method='nearest').squeeze().values
+    
+    # 1. Prepare data and weights
+    rows, cols = data.shape
+    w = lat2W(rows, cols)
+    
+    y = data.flatten()
+    valid_ids = np.where(~np.isnan(y))[0].tolist()
+    
+    # 2. Subset weights and normalize
+    w_sub = w_subset(w, valid_ids)
+    w_sub.transform = 'R'
+    
+    # 3. Calculate Moran's I and Plot
+    mi = Moran(y[valid_ids], w_sub)
+    
+    fig, ax = moran_scatterplot(mi, aspect_equal=True)
+    ax.set_title(f"{task['label']} | {task['date']}\nMoran's I = {mi.I:.4f}", 
+                 fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    plt.show()
+    
+    return mi.I
+
+# --- EXECUTION ---
+for task in TASKS:
+    try:
+        moran_val = analyze_moran(task)
+        print(f"✅ {task['label']} ({task['date']}): Moran's I = {moran_val:.4f}")
+    except Exception as e:
+        print(f"❌ Error in {task['file']}: {e}")
