@@ -1,0 +1,84 @@
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+import netCDF4 as nc
+
+# --- 1. DATE SELECTION (SEPTEMBER 03) ---
+init = "20240902" 
+target = "20240903"
+target_fmt = "2024-09-03" 
+# Filename updated based on your provided list for Sept 3
+gpm_name = "3A-DAY.GPM.DPR.V3-20240808.20240903-S000000-E235959.247.V07D.HDF5"
+
+base_path = '/storage/earth_data/home/ll22iw/Dissertation_data/'
+
+files = {
+    'sw_c': f"{base_path}var_{init}_orcestra_km5p0_RAL3P3_1208_ctrl.nc",
+    'sw_s': f"{base_path}var_{init}_orcestra_km5p0_RAL3P3_1208.nc",
+    'lw_c': f"{base_path}var_{init}_orcestra_km5p0_RAL3P3_2205_ctrl.nc",
+    'lw_s': f"{base_path}var_{init}_orcestra_km5p0_RAL3P3_2205.nc",
+    'rn_c': f"{base_path}var_{init}_orcestra_km5p0_RAL3P3_4203_ctrl.nc",
+    'rn_s': f"{base_path}var_{init}_orcestra_km5p0_RAL3P3_4203.nc",
+    'sat_rad': f"{base_path}CERES_SYN1deg-1H_Terra-Aqua-NOAA20_Ed4.2_Subset_20240801-20241031.nc",
+    'sat_rn': f"{base_path}{gpm_name}"
+}
+
+# --- 2. EXTRACTION LOGIC ---
+lon_bounds, lat_bounds = [296.02, 352.22], [-3.98, 24.33]
+
+def get_data(path, var):
+    with xr.open_dataset(path, chunks={'time': 100}, decode_timedelta=False) as ds:
+        if 'lon' in ds.coords: ds = ds.rename({'lon': 'longitude', 'lat': 'latitude'})
+        subset = ds[var].sel(longitude=slice(*lon_bounds), latitude=slice(*lat_bounds), 
+                            time=slice(f"{target_fmt}T12:00:00", f"{target_fmt}T23:59:59"))
+        hourly = subset.resample(time='1h').mean()
+        weights = np.cos(np.deg2rad(hourly.latitude))
+        return hourly.weighted(weights).mean(("latitude", "longitude")).compute().values[:12]
+
+print(f"Extracting data for {target_fmt}...")
+sw_c, sw_s, sw_o = get_data(files['sw_c'], 'toa_outgoing_shortwave_flux'), get_data(files['sw_s'], 'toa_outgoing_shortwave_flux'), get_data(files['sat_rad'], 'toa_sw_all_1h')
+lw_c, lw_s, lw_o = get_data(files['lw_c'], 'toa_outgoing_longwave_flux'), get_data(files['lw_s'], 'toa_outgoing_longwave_flux'), get_data(files['sat_rad'], 'toa_lw_all_1h')
+rn_c, rn_s = get_data(files['rn_c'], 'stratiform_rainfall_flux'), get_data(files['rn_s'], 'stratiform_rainfall_flux')
+
+ds_gpm = nc.Dataset(files['sat_rn'])
+raw_rn = ds_gpm.groups['GRID'].variables['precipRateMean'][:].astype(float)
+rn_o = np.repeat(np.nanmean(raw_rn[raw_rn >= 0]), 12)
+ds_gpm.close()
+
+# --- 3. BIAS CALCULATION ---
+sw_bias_c, sw_bias_s = np.abs(sw_c - sw_o), np.abs(sw_s - sw_o)
+lw_bias_c, lw_bias_s = np.abs(lw_c - lw_o), np.abs(lw_s - lw_o)
+rn_bias_c, rn_bias_s = np.abs(rn_c*3600 - rn_o), np.abs(rn_s*3600 - rn_o)
+
+# --- 4. PLOTTING ---
+hours = np.arange(12)
+hour_labels = [str(h) for h in range(12, 24)] 
+tick_pos = np.arange(12)
+
+# Removed sharex=True to allow labels on every subplot
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(14, 16))
+
+def style_ax(ax, title, ylim):
+    ax.set_ylim(0, ylim)
+    ax.set_title(f"{title} ", fontweight='bold', fontsize=14, loc='left')
+    ax.set_ylabel('Bias Magnitude', fontweight='bold')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.set_xticks(tick_pos)
+    ax.set_xticklabels(hour_labels) # 12-23 numbers, no Z
+
+line1, = ax1.plot(hours, sw_bias_c, color='#d62728', label='Fixed', linewidth=3)
+line2, = ax1.plot(hours, sw_bias_s, color='#1f77b4', label='Aerosol', linewidth=3)
+style_ax(ax1, 'Shortwave Bias (W/m²)', 160)
+
+ax2.plot(hours, lw_bias_c, color='#d62728', linewidth=3)
+ax2.plot(hours, lw_bias_s, color='#1f77b4', linewidth=3)
+style_ax(ax2, 'Longwave Bias (W/m²)', 25)
+
+ax3.plot(hours, rn_bias_c, color='#d62728', linewidth=3)
+ax3.plot(hours, rn_bias_s, color='#1f77b4', linewidth=3)
+style_ax(ax3, 'Rainfall Bias (mm/hr)', 0.6) 
+ax3.set_xlabel('Time (UTC)', fontweight='bold')
+
+fig.legend(handles=[line1, line2], loc='upper center', bbox_to_anchor=(0.5, 0.97), ncol=2, fontsize=12)
+plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+plt.show()
