@@ -1,0 +1,66 @@
+import xarray as xr
+import numpy as np
+import matplotlib.pyplot as plt
+import cartopy.crs as ccrs
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+
+view_lon, view_lat = [296.02, 352.22], [-3.98, 24.33]
+dates = [
+    {"label": "13 August", "f_date": "20240812", "t_t": "2024-08-13T12:00:00"},
+    {"label": "03 September", "f_date": "20240902", "t_t": "2024-09-03T12:00:00"}
+]
+
+sw_lim, lw_lim = 400, 100
+
+fig, axs = plt.subplots(2, 2, figsize=(18, 14), subplot_kw={'projection': ccrs.PlateCarree()})
+plt.subplots_adjust(wspace=0.1, hspace=0.15, left=0.2)
+
+for row, d in enumerate(dates):
+    t, s = d["t_t"], d["f_date"]
+    
+    ds_sw_s = xr.open_dataset(f'var_{s}_orcestra_km5p0_RAL3P3_1208.nc')
+    ds_lw_s = xr.open_dataset(f'var_{s}_orcestra_km5p0_RAL3P3_2205.nc')
+    ds_sat = xr.open_dataset('CERES_SYN1deg-1H_Terra-Aqua-NOAA20_Ed4.2_Subset_20240801-20241031.nc')
+
+    v_sw = list(ds_sw_s.data_vars)[0]
+    v_lw = list(ds_lw_s.data_vars)[0]
+
+    sat_sw = ds_sat["toa_sw_all_1h"].sel(time=t, method='nearest').rename({'lon':'longitude', 'lat':'latitude'})
+    sat_lw = ds_sat["toa_lw_all_1h"].sel(time=t, method='nearest').rename({'lon':'longitude', 'lat':'latitude'})
+    
+    sat_sw_i = sat_sw.interp_like(ds_sw_s)
+    sat_lw_i = sat_lw.interp_like(ds_lw_s)
+
+    sw_bias_sol = sat_sw_i - ds_sw_s[v_sw].sel(time=t, method='nearest')
+    lw_bias_sol = sat_lw_i - ds_lw_s[v_lw].sel(time=t, method='nearest')
+
+    axs[row, 0].pcolormesh(sw_bias_sol.longitude, sw_bias_sol.latitude, sw_bias_sol,
+                          cmap='RdBu_r', vmin=-sw_lim, vmax=sw_lim, transform=ccrs.PlateCarree())
+    
+    axs[row, 1].pcolormesh(lw_bias_sol.longitude, lw_bias_sol.latitude, lw_bias_sol,
+                          cmap='RdBu_r', vmin=-lw_lim, vmax=lw_lim, transform=ccrs.PlateCarree())
+
+    axs[row, 0].text(-0.35, 0.5, d['label'], transform=axs[row, 0].transAxes, 
+                     va='center', ha='center', fontsize=24, fontweight='bold', rotation=90)
+
+axs[0, 0].set_title("Shortwave", fontsize=28, pad=25, fontweight='bold')
+axs[0, 1].set_title("Longwave", fontsize=28, pad=25, fontweight='bold')
+
+for i in range(2):
+    for j in range(2):
+        ax = axs[i, j]
+        ax.coastlines(linewidth=1.5)
+        ax.set_extent([view_lon[0], view_lon[1], view_lat[0], view_lat[1]], crs=ccrs.PlateCarree())
+        
+        gl = ax.gridlines(draw_labels=True, alpha=0.3, linestyle='--')
+        gl.top_labels = False
+        gl.right_labels = False
+        gl.bottom_labels = (i == 1)
+        gl.left_labels = (j == 0)
+        
+        gl.xlabel_style = {'size': 18}
+        gl.ylabel_style = {'size': 18}
+        gl.xformatter = LONGITUDE_FORMATTER
+        gl.yformatter = LATITUDE_FORMATTER
+
+plt.show()
