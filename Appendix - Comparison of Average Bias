@@ -1,0 +1,46 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+def process_streaks(data):
+    return [data[0], data[1], np.mean(data[2])]
+
+aug_13_ctrl_raw  = [25.4, 15.2, [4.2, 6.1, 3.5]] 
+aug_13_casim_raw = [12.2, 5.1,  [1.8, 2.5, 1.2]]
+sep_03_ctrl_raw  = [30.1, 10.5, [5.5, 8.2, 4.0]]
+sep_03_casim_raw = [18.5, 2.3,  [2.1, 3.0, 1.5]]
+
+aug_13_ctrl, aug_13_casim = process_streaks(aug_13_ctrl_raw), process_streaks(aug_13_casim_raw)
+sep_03_ctrl, sep_03_casim = process_streaks(sep_03_ctrl_raw), process_streaks(sep_03_casim_raw)
+
+labels = ['Shortwave\n(12:00 UTC)', 'Longwave\n(12:00 UTC)', 'Rainfall\n(Daily Mean)']
+x = np.arange(len(labels))
+width = 0.35
+rad_lim = 38   
+rain_lim = 8.5 
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+
+for i, (ax, ctrl, casim, date) in enumerate(zip([ax1, ax2], 
+                                               [aug_13_ctrl, sep_03_ctrl], 
+                                               [aug_13_casim, sep_03_casim], 
+                                               ["13 August 2024", "03 September 2024"])):
+    
+    ax.bar(x[:2] - width/2, ctrl[:2], width, label='Fixed', color='darkred')
+    ax.bar(x[:2] + width/2, casim[:2], width, label='Aerosol', color='teal')
+    ax.set_ylim(0, rad_lim)
+    ax.set_ylabel('Radiation Bias Magnitude (W/m²)', fontsize=14)
+    
+    ax_rain = ax.twinx()
+    ax_rain.bar(x[2] - width/2, ctrl[2], width, color='darkred')
+    ax_rain.bar(x[2] + width/2, casim[2], width, color='teal')
+    ax_rain.set_ylim(0, rain_lim)
+    ax_rain.set_ylabel('Rainfall Bias Magnitude (mm/day)', color='black', fontsize=14)
+    
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=12)
+    ax.grid(axis='y', linestyle='--', alpha=0.3)
+    ax.set_title(f"({chr(97+i)}) {date}", fontsize=16, pad=20)
+
+ax2.legend(loc='upper right', frameon=False, fontsize=12)
+plt.tight_layout()
+plt.show()
