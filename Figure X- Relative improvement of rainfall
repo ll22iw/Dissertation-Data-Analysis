@@ -1,0 +1,36 @@
+import matplotlib.pyplot as plt
+
+metrics = ['MAE', 'RMSE']
+
+ctrl = [0.451, 3.888]
+aerosol = [0.431, 3.165]
+
+reductions_pct = [
+    (ctrl[i] - aerosol[i]) / ctrl[i] * 100 for i in range(len(ctrl))
+]
+
+ci_lower = [0.0134, 0.6471]
+ci_upper = [0.0278, 0.7986]
+
+ci_lower_pct = [(ctrl[i] - (ctrl[i] - ci_lower[i])) / ctrl[i] * 100 for i in range(len(ctrl))]
+ci_upper_pct = [(ctrl[i] - (ctrl[i] - ci_upper[i])) / ctrl[i] * 100 for i in range(len(ctrl))]
+
+yerr = [
+    [reductions_pct[i] - ci_lower_pct[i] for i in range(len(reductions_pct))],
+    [ci_upper_pct[i] - reductions_pct[i] for i in range(len(reductions_pct))]
+]
+
+plt.figure(figsize=(6.8, 5.4))
+
+plt.bar(metrics, reductions_pct, yerr=yerr, capsize=6, color='teal')
+
+plt.axhline(0, color='black', linewidth=1)
+
+plt.ylabel("Reduction in Error (%)", fontsize=12)
+plt.title("Relative Improvement in Rainfall Skill (SOLINSOL − CTRL)", fontsize=13, fontweight='bold')
+
+plt.ylim(0, max(reductions_pct)*1.2)
+plt.grid(axis='y', linestyle='--', alpha=0.4)
+
+plt.tight_layout()
+plt.show()
